@@ -18,6 +18,23 @@ const MUST = 'must fix'
 const KEEP = 'can stay'
 
 const SELF = 'scripts/scan.mjs'
+// dsh-purge/ is the MIT snapshot pinned in NOTICE. It has to stay byte-identical
+// to that release, so DS Bot wording rules are not applied to it. Secret rules,
+// personal emails, and extra patterns still are. personal-path is skipped there
+// because a skill note in the snapshot uses a generic home-directory example,
+// and rewriting it would no longer be the release we pinned.
+const VENDORED = /^dsh-purge\//
+const VENDORED_MUST_SKIP = new Set([
+  'draft-marker',
+  'not-public-path-in-docs',
+  'vendor-brand',
+  'vendor-look-identifier',
+  'vendor-in-look-file',
+  'third-party-logo',
+  'old-project-name',
+  'old-package-name',
+  'personal-path',
+])
 const PLACEHOLDER = /mock|test|fake|dummy|example|placeholder|should-not|xxx|your|<|\$\{|redact|sample/i
 const VENDORS = /\b(qwen|minimax|stepfun|kimi|moonshot|zhipu|glm|mimo|anthropic|claude|openai|gemini|mistral|xai|zai)\b/i
 // Files that define the look (characters, inks, logos, themes). Vendor names there are
@@ -97,6 +114,7 @@ for (const file of files) {
   const lines = data.toString('utf8').split('\n')
   lines.forEach((line, index) => {
     for (const rule of TEXT_RULES) {
+      if (VENDORED.test(file) && (rule.level === KEEP || VENDORED_MUST_SKIP.has(rule.id))) continue
       if (rule.files && !rule.files.test(file)) continue
       if (rule.notFiles && rule.notFiles.test(file)) continue
       if (rule.unless && rule.unless.test(line)) continue

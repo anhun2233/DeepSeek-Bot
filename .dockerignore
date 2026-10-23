@@ -1,5 +1,7 @@
 .git
 **/node_modules
+# The DS Bot image packs ds-bot/ only. This snapshot is installed separately.
+dsh-purge
 ds-bot/dev/harness
 .dsh-test*
 .dsh-home

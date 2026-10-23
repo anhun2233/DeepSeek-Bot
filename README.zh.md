@@ -11,11 +11,40 @@
 
 ![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
-DeepSeek Bot（简称 DS Bot）是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 dsh）的 bot 插件，插件将 dsh 改造为 bot 形式。你可以与自己创建的 bot 交流、工作。
+本仓库是一个公开的 monorepo，里面有两个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）插件。
+
+| 插件 | 目录 | 包名 | 做什么 |
+| --- | --- | --- | --- |
+| DS Bot | [`ds-bot/`](ds-bot/) | `ds-bot` | 一组长期存在的 Bot。你和它们对话，它们彼此对话，也在群里一起工作。 |
+| Purge Community | [`dsh-purge/`](dsh-purge/) | `dsh-purge-community` | 同一套 dsh 的社区附加组件：状态自检、提示词与规则管理、本机备份与回滚，以及 Agent 预设。按发行版原样放入，许可是 MIT。 |
+
+两个插件彼此独立。Bot 要用 Purge Community 注册的预设时，两个都装。DS Bot 的 **无预设 · 放开工具** 会挂上一个已经装好的预设（装了 `unrestricted` 时默认用它），并去掉该预设的人设。人设由你在 Bot 的设置里写，或写在 `$DSH_HOME/bot/personas/<bot id>/persona.md`。预设原文只在 `dsh-purge/` 里，DS Bot 不包含这段文字。
+
+[`app/`](app/) 里的桌面应用仍然只带 DS Bot。Purge Community 用下面的脚本，或在插件页，加进一个 dsh profile。
+
+## 一次安装两个插件
+
+克隆本仓库后：
+
+```sh
+bash scripts/install-into-dsh.sh
+```
+
+```powershell
+powershell -File scripts/install-into-dsh.ps1
+```
+
+脚本把两个插件打成压缩包，放到 `dist/plugins/`，并打印 dsh **插件 → 添加插件** 的步骤，以及本机已有 `dsh` 命令时可用的 `dsh plugin add`。只装其中一个、以及钉住的上游提交，见 [INSTALL.md](INSTALL.md)。
+
+## DS Bot
+
+DeepSeek Bot（简称 DS Bot）是 Bot 团队插件。你可以与自己创建的 bot 交流、工作。
 
 ![和 Chief 说一句话，它就把 bot 和群聊建好](docs/images/team.zh.png)
 
 ## 安装
+
+从本仓库同时打包两个插件，见[一次安装两个插件](#一次安装两个插件)。下面是只装 DS Bot 的步骤。脚本打印出的压缩包路径，可以直接填进插件界面的第 2 步。要它的预设时，先添加 Purge Community 的压缩包。
 
 **桌面应用（Windows、macOS、Linux）**
 
@@ -102,13 +131,22 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 所有数据都在你自己的电脑上，在 dsh 主目录（默认 `~/.dsh`）的 `bot/` 和 `sessions/` 里。卸载插件不会删除这些数据。
 
+## Purge Community
+
+[`dsh-purge/`](dsh-purge/) 是 Purge Community 1.6.50，包名 `dsh-purge-community`，从 [anhun2233/dsh-purge](https://github.com/anhun2233/dsh-purge) 的提交 `4bb6e23588d5f3a4f257fe4f0b3cac3db5b62c3f` 原样复制。这次提交和上游 [kingcharleslzy-ai/dsh-purge](https://github.com/kingcharleslzy-ai/dsh-purge) 的标签 `v1.6.50` 是同一棵树。许可是 MIT，Copyright (c) 2026 小杨。该包自己的说明把原项目记为 [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。见 [NOTICE](NOTICE)。
+
+它自己的说明在 [`dsh-purge/README.zh-CN.md`](dsh-purge/README.zh-CN.md)（[English](dsh-purge/README.md)）和 [`dsh-purge/docs/INSTALLATION.md`](dsh-purge/docs/INSTALLATION.md)。该包还带有 `dsh-purge/scripts/install.sh`，会从上游仓库下载 GitHub Release。本仓库的脚本打包的是已经放在这里的快照。
+
+该包注册的预设，包括 `unrestricted` 和 `redteam`，都留在 `dsh-purge/` 里。
+
 ## 开发
 
-插件源码在 [`ds-bot/`](ds-bot/)。配置项和内部结构见 [`ds-bot/README.md`](ds-bot/README.md)，开发、测试和协作方式见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+DS Bot 插件源码在 [`ds-bot/`](ds-bot/)。配置项和内部结构见 [`ds-bot/README.md`](ds-bot/README.md)，开发、测试和协作方式见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。从这份克隆同时安装两个插件，见 [INSTALL.md](INSTALL.md)。
 
 ## 致谢
 
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：ds bot 建在 dsh 的插件系统上。每个 bot 都在 dsh 会话里工作，用的是 dsh 的工具和模型。
+- [dsh-purge](https://github.com/kingcharleslzy-ai/dsh-purge)（MIT，Copyright (c) 2026 小杨）：`dsh-purge/` 是 Purge Community 1.6.50，与标签 `v1.6.50`、以及 [anhun2233/dsh-purge](https://github.com/anhun2233/dsh-purge) 的同一次提交是同一棵树。原项目是 [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge)。见 [NOTICE](NOTICE)。
 - [esbuild](https://esbuild.github.io/)：用来打包插件的界面代码。
 - 感谢下面这些项目公开的设计思路。ds bot 参考了它们的思路，没有使用它们的代码：
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo)：bot 记忆的 Markdown 格式。

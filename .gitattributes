@@ -1,5 +1,8 @@
 # Shell scripts are copied into the Docker image as they are; CRLF breaks them.
 *.sh text eol=lf
 
+# Third-party snapshot pinned in NOTICE. Keep it out of the language stats.
+dsh-purge/** linguist-vendored
+
 # Cookie fixtures test BOM and line-ending variants; normalizing them removes what they test.
 app/test/fixtures/** -text
