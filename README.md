@@ -66,6 +66,8 @@ DS Bot selects its `auto` search provider for the whole profile. If you disable 
 
 You can do all your talking and work with one bot, in one window. You don't need to worry about the context behind it. The bot's details page shows its info, and there you can pick the model you want it to use. You can switch models at any time, but I still recommend that you keep one model for a bot for a long time, and switch only when you really need to.
 
+In the Bot's settings you can also pick an agent preset that is installed in DeepSeek Harness, or a blank mode that keeps a preset's tools without its persona. A persona document for that Bot is edited there, or as `$DSH_HOME/bot/personas/<bot id>/persona.md`.
+
 Bots also have memory. A bot remembers what you like and uses it in later work. You can manage its memory on the bot's details page, or just tell the bot.
 
 ![Bot details: model, memory, usage](docs/images/details.png)

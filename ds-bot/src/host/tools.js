@@ -261,10 +261,13 @@ export function install(rt) {
       effort: { type: 'string', description: 'Thinking level for the model, as list_models shows it. Only when the user names one.' },
       work_dir: WORK_DIR_PARAM,
       avatar: AVATAR_PARAM,
+      preset: { type: 'string', description: 'Agent preset. Only the user can set this, in the Bot\'s settings. Passing it does not create the Bot.' },
+      persona: { type: 'string', description: 'Persona document. Only the user can edit this, in the Bot\'s settings or its persona file. Passing it does not create the Bot.' },
     },
     output,
     async execute(args, exec) {
       await rt.load()
+      if (args.preset !== undefined || args.persona !== undefined) return 'Only the user can set a Bot\'s agent preset or persona document. They are in the Bot\'s settings; the persona is also a file on disk.'
       if (!rt.isMain(rt.selfOf(exec.agent?.id))) return 'Only the Main Bot can create Bots. Ask the Main Bot instead.'
       try {
         const avatar = args.avatar ? await readAvatar(String(args.avatar), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent), isData: rt.inData }) : undefined
@@ -286,7 +289,7 @@ export function install(rt) {
 
   ctx.tools.register(defineTool({
     name: 'update_bot',
-    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot.',
+    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot. The agent preset and the persona document are the user\'s; passing preset or persona changes nothing.',
     parameters: {
       bot: { type: 'string', description: 'Current name of the Bot to change; leave out to change yourself' },
       name: { type: 'string', description: 'New name' },
@@ -297,12 +300,15 @@ export function install(rt) {
       model: { type: 'string', description: 'Move the Bot to another model, as provider/model or a model id' },
       effort: { type: 'string', description: 'Thinking level for the Bot\'s model, as list_models shows; an empty string returns to the model\'s default' },
       work_dir: { ...WORK_DIR_PARAM, description: `${WORK_DIR_PARAM.description}; an empty string returns it to the team workspace` },
+      preset: { type: 'string', description: 'Agent preset. Only the user can set this. Passing it changes nothing.' },
+      persona: { type: 'string', description: 'Persona document. Only the user can edit this. Passing it changes nothing.' },
     },
     output,
     async execute(args, exec) {
       await rt.load()
       const self = rt.selfOf(exec.agent?.id)
       const caller = rt.botOf(self)
+      if (args.preset !== undefined || args.persona !== undefined) return 'Only the user can change a Bot\'s agent preset or persona document. They are in the Bot\'s settings; the persona is also a file on disk.'
       if (caller === undefined) return 'Only Bots on the team can use update_bot.'
       const bot = args.bot ? rt.findBot(args.bot) : caller
       if (bot === undefined) return `No Bot named ${args.bot}.`

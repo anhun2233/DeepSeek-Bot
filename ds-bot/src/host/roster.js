@@ -30,19 +30,11 @@ export function install(rt) {
     return workspace.id
   }
 
-  // Under the PTC preset (DSH Desktop's default) a model may call only run_code, which
-  // turns down the group_relay call that a group chat's Session is given. A Session
-  // keeps the preset it is made with.
-  async function botPreset() {
-    const presets = ctx.get?.('agentPresets')
-    if (presets === undefined) return {}
-    const standard = (await presets.list()).some(preset => preset.id === 'standard' && preset.broken === undefined)
-    return standard ? { agentPreset: 'standard' } : {}
-  }
-
   // `dir` is a working folder outside the team workspace. Such a Session is made by cwd
   // alone, so it joins no DSH workspace and the user's own project lists stay as they are.
-  async function createSession(title, { dir } = {}) {
+  // `presetBot` is the Bot the Session speaks for, or omitted for the group's relay
+  // Session, which stays on standard so group_relay is a real tool.
+  async function createSession(title, { dir, presetBot } = {}) {
     // A Bot's tools run here too; while another dsh holds the team, a new Session would
     // belong to no saved Bot.
     const readOnly = rt.readOnly()
@@ -50,7 +42,7 @@ export function install(rt) {
     const usable = dir !== undefined && await rt.isFolder(dir)
     if (dir !== undefined && !usable) rt.warn('ds-bot: the working folder %s is gone; %s starts in the team workspace', dir, title)
     const place = usable ? { cwd: dir } : { workspaceId: await ensureWorkspace() }
-    const { sessionId } = await ctx.sessionController.create({ ...place, ...await botPreset() })
+    const { sessionId } = await ctx.sessionController.create({ ...place, ...await rt.presetCreateArg(presetBot) })
     const agent = await rt.resolveAgent(sessionId)
     await ctx.sessionTitle.rename(agent.session, title)
     return sessionId
@@ -103,7 +95,7 @@ export function install(rt) {
     return holdName('bot', cleanName, () => buildBot(cleanName, options))
   }
 
-  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false }) {
+  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false, preset }) {
     const cleanAvatarValue = cleanAvatar(avatar)
     // The model is fixed at creation, so a later change of the DSH default leaves it alone.
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
@@ -112,7 +104,8 @@ export function install(rt) {
     if (effort !== undefined && effort !== '' && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
     const effortId = modelRef === undefined ? undefined : await rt.resolveEffort(modelRef, effort)
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
-    const id = await createSession(cleanName, { dir })
+    const choice = preset === undefined ? undefined : await rt.cleanPresetChoice(preset)
+    const id = await createSession(cleanName, { dir, presetBot: choice })
     try {
       state.bots[id] = {
         id,
@@ -125,6 +118,8 @@ export function install(rt) {
         ...(effortId ? { effort: effortId } : {}),
         ...(dir ? { workDir: dir } : {}),
         instructions: String(instructions).trim(),
+        ...(choice?.blankTools ? { blankTools: choice.blankTools } : {}),
+        ...(choice?.preset ? { preset: choice.preset } : {}),
         createdAt: Date.now(),
         createdBy: createdBy ?? null,
         capabilities: [],
@@ -192,7 +187,7 @@ export function install(rt) {
     // A folder that went away since leaves the copy in the team workspace.
     const workDir = bot.workDir !== undefined && await rt.isFolder(bot.workDir) ? bot.workDir : undefined
     // No await from here to createBot's check, so two copies at once get different names.
-    return createBot({
+    const copy = await createBot({
       name: freshName(`${bot.name} copy`),
       role: bot.role,
       instructions: bot.instructions,
@@ -202,7 +197,10 @@ export function install(rt) {
       effort: served ? bot.effort : undefined,
       workDir,
       copyOf: bot.id,
+      preset: bot.blankTools ? `blank:${bot.blankTools}` : bot.preset,
     })
+    await rt.copyPersona?.(bot.id, copy.id).catch(error => rt.warn('ds-bot: persona of %s not copied: %s', bot.name, error))
+    return copy
   }
 
   async function updateBot(id, patch) {
@@ -262,6 +260,13 @@ export function install(rt) {
       modelChanged = true
     }
     if (patch.permission !== undefined) await rt.setPermission(bot, patch.permission)
+    let presetChanged = false
+    if (patch.preset !== undefined) {
+      const choice = await rt.cleanPresetChoice(patch.preset)
+      const before = `${bot.preset ?? ''}\n${bot.blankTools ?? ''}`
+      rt.applyPresetChoice(bot, choice)
+      presetChanged = `${bot.preset ?? ''}\n${bot.blankTools ?? ''}` !== before
+    }
     const moved = moving && workDir !== bot.workDir
     if (moving) {
       if (workDir === undefined) delete bot.workDir
@@ -270,6 +275,7 @@ export function install(rt) {
     await rt.save()
     if (modelChanged) await rt.applyModel(bot, { force: true })
     if (moved) void rt.followFolder(bot.id)
+    if (presetChanged) await rt.followPreset(bot.id).catch(error => rt.warn('ds-bot: preset for %s not applied: %s', bot.name, error))
     if (bot.model && bot.kickoff !== undefined) {
       const held = bot.kickoff
       delete bot.kickoff
@@ -545,7 +551,7 @@ export function install(rt) {
     if (bot === undefined) throw new Error('Unknown Bot')
     if (rt.isMain(id)) throw new Error('A Main Bot cannot be deleted; remove its Main Bot role first')
     // Before the Bot and its group Sessions leave the state, which the archive reads.
-    const archived = rt.archiveBotMemory(id)
+    const archived = Promise.all([rt.archiveBotMemory(id), rt.archivePersona?.(id)])
     const current = rt.chatOf(id)
     // Questions and exchange turns are kept per Session, so every part of the chat is cleared.
     const parts = new Set([id, current, ...(bot.segments ?? []).map(segment => segment.sessionId)])

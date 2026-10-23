@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { install } from '../src/host/prompt.js'
+import { install, withoutPresetPersona } from '../src/host/prompt.js'
 import { fakeContext } from './fake-ctx.js'
 
 function start() {
@@ -35,6 +35,20 @@ test('Bots get a scoped progress rule without changing the private/group prompt 
     }
   }
   assert.equal(prompt('group-worker'), prompt('worker'))
+})
+
+test('blank mode drops preset persona sections and keeps every other section', () => {
+  const assembly = {
+    sections: [
+      { name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' },
+      { name: 'deployment:persona-prefix', text: 'preset persona' },
+      { name: 'bot-persona', text: '# Persona\nThe user wrote this.' },
+      { name: 'bot-identity', text: 'team rules' },
+      { name: 'tool-bash', text: 'bash guidance' },
+      { name: 'deployment:persona-suffix', text: 'suffix' },
+    ],
+  }
+  assert.deepEqual(withoutPresetPersona(assembly).sections.map(section => section.name), ['bot-persona', 'bot-identity', 'tool-bash'])
 })
 
 test('the group relay and non-Bot sessions do not get progress instructions', (t) => {

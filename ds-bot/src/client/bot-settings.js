@@ -83,6 +83,104 @@ export function SwitchRow({ label, hint, on, disabled, onChange }) {
     h(Switch, { on, label, disabled, onChange }))
 }
 
+const BUILTIN_PRESETS = {
+  standard: 'Standard mode',
+  ptc: 'PTC mode',
+  minimal: 'Minimal mode',
+  cordis: 'Creator mode',
+}
+
+function presetLabel(option) {
+  if (option.kind === 'blank') return t('Blank — standard tools')
+  if (option.kind === 'blank-expanded') return t('Blank — expanded tools')
+  if (option.name) return option.name
+  if (BUILTIN_PRESETS[option.value]) return t(BUILTIN_PRESETS[option.value])
+  return option.value
+}
+
+function presetValue(bot) {
+  if (bot.blankTools === 'standard') return 'blank:standard'
+  if (bot.blankTools) return 'blank'
+  return bot.preset || 'standard'
+}
+
+function presetHint(bot) {
+  const gone = bot.presetFallback
+  if (gone?.blank) return t('The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.', { id: gone.id })
+  if (gone) return t('The preset "{id}" is not available, so this Bot uses standard.', { id: gone.id })
+  if (bot.blankTools) return t('No preset persona. This Bot keeps that preset\'s tools, then your persona document, then the team rules.')
+  return t('The preset\'s persona, then your persona document, then the team rules. Applies from the next part when the tools change.')
+}
+
+function PresetCard({ bot, roster, save }) {
+  const catalog = roster.presets
+  if (!catalog?.options?.length) return null
+  const value = presetValue(bot)
+  const expanded = catalog.options.find(option => option.kind === 'blank-expanded')
+  const sources = expanded?.sources ?? []
+  const source = bot.blankTools && bot.blankTools !== 'standard' ? bot.blankTools : sources[0]?.value
+  const sourceOptions = source && !sources.some(option => option.value === source) ? [...sources, { value: source, kind: 'preset' }] : sources
+  return h(Card, { title: t('Agent preset') },
+    h('div', { className: 'bt-set-row bt-bs-row' },
+      h('span', { className: 'bt-set-copy' },
+        h('span', { className: 'bt-bs-label' }, t('Preset')),
+        h('span', { className: 'bt-set-hint' }, presetHint(bot))),
+      h('select', {
+        className: 'bt-select bt-bs-preset', 'aria-label': t('Agent preset'), value: catalog.options.some(option => option.value === value) ? value : 'standard',
+        onChange: (event) => {
+          const next = event.target.value
+          if (next === 'blank') save({ preset: `blank:${sourceOptions[0]?.value ?? ''}` })
+          else save({ preset: next })
+        },
+      }, catalog.options.map(option => h('option', { key: option.value, value: option.value, title: option.description }, presetLabel(option))))),
+    value === 'blank' && sourceOptions.length > 0 ? h('div', { className: 'bt-set-row bt-bs-row' },
+      h('span', { className: 'bt-set-copy' },
+        h('span', { className: 'bt-bs-label' }, t('Tools from')),
+        h('span', { className: 'bt-set-hint' }, t('Uses this installed preset\'s tools only. Its persona text is left off.'))),
+      h('select', {
+        className: 'bt-select bt-bs-preset', 'aria-label': t('Tools from'), value: source,
+        onChange: event => save({ preset: `blank:${event.target.value}` }),
+      }, sourceOptions.map(option => h('option', { key: option.value, value: option.value }, presetLabel(option))))) : null)
+}
+
+function PersonaCard({ bot, actions, run }) {
+  const [text, setText] = useState(null)
+  const [saved, setSaved] = useState('')
+  const [path, setPath] = useState('')
+  useEffect(() => {
+    let current = true
+    setText(null)
+    actions.persona(bot.id).then((value) => {
+      if (!current) return
+      setText(value.text ?? '')
+      setSaved(value.text ?? '')
+      setPath(value.path ?? '')
+    }, () => { if (current) setText('') })
+    return () => { current = false }
+  }, [bot.id])
+  const commit = () => {
+    if (text === null || text === saved) return
+    const next = text
+    void run(actions.setPersona(bot.id, next).then(() => setSaved(next)))
+  }
+  return h(Card, { title: t('Persona') },
+    h(Row, {
+      label: t('Persona document'),
+      hint: path
+        ? t('Who this Bot is, in your words. Saved as {path}. You can edit that file directly. A Bot cannot overwrite it.', { path })
+        : t('Who this Bot is, in your words. Only you can edit it. Instructions above stay the short job line.'),
+      stack: true,
+    },
+    text === null
+      ? h('div', { className: 'bt-muted' }, t('Loading…'))
+      : h('textarea', {
+        className: 'bt-bs-input bt-bs-area bt-persona-area', value: text, 'aria-label': t('Persona document'), spellCheck: true,
+        placeholder: t('Describe who this Bot is…'),
+        onChange: event => setText(event.target.value),
+        onBlur: commit,
+      })))
+}
+
 function modelHint(bot, roster) {
   const shown = modelOf(bot, roster)
   if (shown === undefined) return t('Pick the model this Bot runs on.')
@@ -229,8 +327,10 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
         h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Folder'))),
         h(FolderMenu, { value: bot.workDir, actions, run, onPick: workDir => save({ workDir }) }))),
     h(Card, { title: t('Instructions') },
-      h(Row, { label: t('What this Bot does'), hint: t('Its job on the team. Part of the Bot\'s system prompt.'), stack: true },
+      h(Row, { label: t('What this Bot does'), hint: t('Its job on the team. Part of the Bot\'s system prompt. A Bot can change this.'), stack: true },
         h(InlineText, { label: t('Instructions'), value: bot.instructions, multiline: true, placeholder: t('What this Bot is responsible for…'), onSave: instructions => save({ instructions }) }))),
+    h(PresetCard, { bot, roster, save }),
+    h(PersonaCard, { bot, actions, run }),
     h(BotCapabilitiesCard, { bot, roster, actions, run, Card, SwitchRow }),
     roster.memory === false ? null : h(MemoryCard, { bot, actions }),
     h(BotSchedules, { bot, roster, actions }),
@@ -277,6 +377,8 @@ label.bt-bs-row{cursor:text}
 .bt-bs-stack{flex-direction:column;align-items:stretch;gap:8px}
 .bt-bs-area{flex:none;width:auto;min-height:112px;height:auto;margin:0 -6px -4px;padding:8px;line-height:19px;text-align:left;resize:vertical;background:var(--bt-hover)}
 .bt-bs-area:hover{background:var(--bt-active)}
+.bt-persona-area{min-height:240px}
+.bt-bs-preset{flex:0 1 240px;max-width:58%;height:30px}
 .bt-bs-danger .bt-bs-label{color:var(--bt-danger)}
 .bt-bs-danger[data-confirm]{background:color-mix(in srgb,var(--bt-danger) 8%,transparent)}
 .bt-bs-danger[data-confirm]:hover{background:color-mix(in srgb,var(--bt-danger) 12%,transparent)}

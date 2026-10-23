@@ -412,6 +412,7 @@ export function install(rt) {
   ].join('\n')
   const HANDOFF_PROMPT = handoffPrompt('Your conversation is long')
   const FOLDER_PROMPT = handoffPrompt('Your working folder changed')
+  const PRESET_PROMPT = handoffPrompt('The agent preset for this conversation changed')
   const NOTE_RETRY_SHORTER = 'Your last note was cut off at the output limit, so it was not used. Write the whole note again, shorter: at most about 1,000 words. Keep every heading; drop detail before you drop facts.'
   const noteRetryMissing = missing => `Your last note lacked these headings, so it was not used: ${missing.map(name => `"## ${name}"`).join(', ')}. Write the whole note again with every heading exactly as given, in English.`
   const missingSections = note => NOTE_SECTIONS.map(([name]) => name)
@@ -420,13 +421,13 @@ export function install(rt) {
   // The same system prompt, tools, and messages as the conversation's own requests,
   // plus the note prompt; nothing is written into the Session. A cut-off note, or one
   // without every section, is asked for again once; then the note fails.
-  async function writeNote(agent, signal, { folder = false } = {}) {
+  async function writeNote(agent, signal, { folder = false, preset = false } = {}) {
     const session = agent.session
     const header = session.requestHeader()
     const route = header?.config
     if (!route?.provider || !route?.model) throw new Error('the Session has not called a model yet')
     const messages = session.deriveMessages()
-    const base = folder ? FOLDER_PROMPT : HANDOFF_PROMPT
+    const base = preset ? PRESET_PROMPT : folder ? FOLDER_PROMPT : HANDOFF_PROMPT
     let retry
     let problem
     for (let attempt = 1; attempt <= NOTE_ATTEMPTS; attempt += 1) {
@@ -633,14 +634,15 @@ export function install(rt) {
       : `${head} It is the note written at the end of part ${segment.noteFrom}, carried over unchanged; anything newer is in the messages below, and read_own_chat finds the rest.)\n\n${segment.note}`
   }
 
-  function handoffPackage({ room, segment, lines, number, resume, overflow, failed, bare, folder }) {
+  function handoffPackage({ room, segment, lines, number, resume, overflow, failed, bare, folder, preset = false }) {
     const where = room ? `your conversation in the group chat "${room.name}"` : 'your own chat with the user'
     const lookup = room
       ? 'read_group_chat shows the group\'s latest messages, and read_own_chat your own chat.'
       : 'read_own_chat searches every part, reads around an anchor such as [part 2 #1234 · …], and shows the note that closed any earlier part.'
     const reason = failed !== undefined ? `a request in the previous part kept failing (${failed})`
       : overflow ? 'the previous part overflowed the model\'s window'
-        : folder !== undefined ? `your working folder changed to ${folder}` : 'the previous part grew long'
+        : preset ? 'its agent preset changed'
+          : folder !== undefined ? `your working folder changed to ${folder}` : 'the previous part grew long'
     const { recent, earlier, unlisted, complete } = lines
     const omitted = [
       ...(unlisted > 0 ? [`(${unlisted} older messages are not listed.)`] : []),
@@ -803,10 +805,10 @@ export function install(rt) {
 
   // `hard`: past the hard line or the window, the part moves on even without a note
   // from the model. `folder`: the part moves on because its working folder changed.
-  function startSwitch(agent, { resume = false, carry = [], info, joined, overflow = false, failed, bare = false, folder = false, hard = overflow || folder } = {}) {
+  function startSwitch(agent, { resume = false, carry = [], info, joined, overflow = false, failed, bare = false, folder = false, preset = false, hard = overflow || folder || preset } = {}) {
     const place = placeOf(agent.id)
     if (place === undefined || switches.has(agent.id) || readOnly()) return
-    const job = { ...place, carry: [...carry], info, joined, resume, overflow, failed, bare, folder, hard, since: Date.now() }
+    const job = { ...place, carry: [...carry], info, joined, resume, overflow, failed, bare, folder, preset, hard, since: Date.now() }
     switches.set(agent.id, job)
     void runSwitch(agent, job)
       .catch(error => {
@@ -905,14 +907,14 @@ export function install(rt) {
     const number = parts.length
     const budget = Math.min(RECENT_TOKENS, Math.floor((lines?.check ?? 4 * RECENT_TOKENS) / 4))
     const readLines = () => (job.bare ? { recent: [], earlier: [], unlisted: 0, complete: true } : handoffLines(agent.id, { budget, group: room !== undefined, number }))
-    let carried = job.folder ? await readLines() : undefined
+    let carried = job.folder || job.preset ? await readLines() : undefined
     // A short part with no tool work goes over word for word, so it needs no note.
     const whole = carried?.whole === true && !session.deriveMessages().some(message => message.role === 'tool')
     let written
     let failure
     if (!job.overflow && job.failed === undefined && !whole) {
       try {
-        written = await writeNote(agent, AbortSignal.any([signal, AbortSignal.timeout(NOTE_TIMEOUT_MS)]), { folder: job.folder })
+        written = await writeNote(agent, AbortSignal.any([signal, AbortSignal.timeout(NOTE_TIMEOUT_MS)]), { folder: job.folder, preset: job.preset })
       } catch (error) {
         if (signal.aborted) throw error
         failure = error
@@ -936,7 +938,7 @@ export function install(rt) {
     if (signal.aborted) throw signal.reason
     const dir = rt.workDirOf(job)
     const intended = dir !== undefined && await rt.isFolder(dir) ? dir : rt.teamFolder()
-    const freshId = await rt.createSession(room ? `${bot.name} · ${room.name}` : bot.name, { dir })
+    const freshId = await rt.createSession(room ? `${bot.name} · ${room.name}` : bot.name, { dir, presetBot: bot })
     const picked = await freshRoute(bot, session)
     if (picked !== undefined) await selectRoute(bot, freshId, picked)
     await rt.applyPermission(bot, freshId, room)
@@ -995,7 +997,7 @@ export function install(rt) {
         folderRetry.set(freshId, Date.now() + FOLDER_RETRY_MS)
         rt.warn('ds-bot: the fresh part of %s did not start in %s; it works in %s', bot.name, intended, cwd)
       }
-      const text = handoffPackage({ room, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, failed: job.failed, bare: job.bare, folder })
+      const text = handoffPackage({ room, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, failed: job.failed, bare: job.bare, folder, preset: job.preset === true })
       freshParts.set(freshId, estimateTokens(text))
       fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume) }))
       await ctx.sessions.flush(fresh.session)
@@ -1044,6 +1046,7 @@ export function install(rt) {
       partBase.set(agent.id, (tokensOf(agent.session) ?? 0) + fresh)
     }
     if (!readOnly() && await folderMove(agent, { midTurn: payload.step > 1 }) !== undefined) return switchBeforeStep(agent, payload, { folder: true })
+    if (!readOnly() && await presetDrift(agent, { midTurn: payload.step > 1 })) return switchBeforeStep(agent, payload, { preset: true })
     const lines = await contextLines(agent.session).catch(() => undefined)
     const tokens = tokensOf(agent.session)
     if (lines === undefined || tokens === undefined || tokens < lines.hard || !grown(agent.id, tokens, lines) || readOnly()) return next()
@@ -1107,6 +1110,19 @@ export function install(rt) {
     }
     return next()
   }, { prepend: true })
+
+  // The mounted preset is not the one this Bot now asks for. A group reply ends on
+  // the preset it began with; the group conversation moves at its next turn there.
+  async function presetDrift(agent, { midTurn = false } = {}) {
+    const place = placeOf(agent.id)
+    if (place === undefined || (midTurn && place.roomId !== undefined)) return false
+    const bot = rt.botOf(place.botId)
+    if (bot === undefined || !rt.presetExplicit?.(bot)) return false
+    await rt.refreshPresets?.()
+    const wanted = rt.mountPresetId?.(bot)
+    if (wanted === undefined) return false
+    return rt.boundPreset?.(agent) !== wanted
+  }
 
   // A Bot's own chat moves to its new folder now when it is idle; a running turn
   // moves at its next step, and each group conversation at its next turn there.
@@ -1321,5 +1337,9 @@ export function install(rt) {
     return { sessionId: parts.at(-1).sessionId, ...(await partPage(parts, index, cursor)) }
   }
 
-  Object.assign(rt, { clock, partsOf, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, followFolder, heldBack, switchJobs: () => switches.values() })
+  Object.assign(rt, {
+    clock, partsOf, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, followFolder, heldBack,
+    switchForPreset: agent => startSwitch(agent, { preset: true }),
+    switchJobs: () => switches.values(),
+  })
 }

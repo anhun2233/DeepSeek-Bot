@@ -337,6 +337,26 @@ var ZH = {
   "Removes the Bot from the team.": "把这个 Bot 从团队里移除。",
   "Pick a model and {name} can start.": "选好模型，{name} 就能开始工作。",
   "Permissions": "权限",
+  "Agent preset": "Agent 预设",
+  Preset: "预设",
+  "Blank — standard tools": "空白 — 标准工具",
+  "Blank — expanded tools": "空白 — 扩展工具",
+  "Tools from": "工具来自",
+  "Standard mode": "标准模式",
+  "PTC mode": "PTC 模式",
+  "Minimal mode": "极简模式",
+  "Creator mode": "创造模式",
+  "No preset persona. This Bot keeps that preset's tools, then your persona document, then the team rules.": "没有预设人设。这个 Bot 沿用该预设的工具，然后是你的人设文档，再是团队规则。",
+  "The preset's persona, then your persona document, then the team rules. Applies from the next part when the tools change.": "先是预设的人设，然后是你的人设文档，再是团队规则。工具变了的话，从下一段对话开始生效。",
+  'The preset "{id}" is not available, so this Bot uses standard.': "预设「{id}」不可用，所以这个 Bot 改用标准预设。",
+  'The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.': "预设「{id}」不可用，所以这个 Bot 改用标准预设的工具，并且不带预设人设。",
+  "Uses this installed preset's tools only. Its persona text is left off.": "只用这个已安装预设的工具，不带它的人设文字。",
+  Persona: "人设",
+  "Persona document": "人设文档",
+  "Who this Bot is, in your words. Saved as {path}. You can edit that file directly. A Bot cannot overwrite it.": "用你自己的话描述这个 Bot 是谁。保存在 {path}。你也可以直接改那个文件。Bot 不能覆盖它。",
+  "Who this Bot is, in your words. Only you can edit it. Instructions above stay the short job line.": "用你自己的话描述这个 Bot 是谁。只有你能改。上面的说明仍是 Bot 可以改的短职责。",
+  "Describe who this Bot is…": "描述这个 Bot 是谁…",
+  "Its job on the team. Part of the Bot's system prompt. A Bot can change this.": "它在团队里的职责，会写进系统提示。Bot 可以改这一段。",
   "Read only": "仅可查看",
   "Workspace": "工作区内修改",
   "Full access": "完全权限",
@@ -1026,6 +1046,9 @@ var ZH = {
 };
 var HOST_ERRORS = [
   [/^Model (.+) is not available\. Available: (.*)$/, "模型 $1 不可用。可用的：$2"],
+  [/^Unknown agent preset "(.+)"\. Available: (.*)$/, "没有 Agent 预设「$1」。可用的：$2"],
+  [/^The preset "(.+)" replaces the whole system prompt, so its tools cannot be used without its persona$/, "预设「$1」会换成整份系统提示，所以不能只要它的工具、不要它的人设"],
+  [/^A persona document can be at most (\d+) characters$/, "人设文档最多 $1 个字符"],
   [/^The API key for (.+) is set outside DS Bot and cannot be changed here$/, "$1 的 API key 是在 DS Bot 之外设置的，这里改不了"],
   [/^(.+) takes no API key here$/, "$1 不能在这里填 API key"],
   [/^(.+) is already set up$/, "$1 已经设置过了"],
@@ -1067,6 +1090,8 @@ var HOST_ERRORS = [
 var HOST_ZH = {
   "Request failed": "请求失败",
   "Permissions are not available in this DeepSeek Harness": "这个 DeepSeek Harness 不支持权限设置",
+  "Agent presets are not available in this DeepSeek Harness": "这个 DeepSeek Harness 不支持 Agent 预设",
+  "The standard preset is not available in this DeepSeek Harness": "这个 DeepSeek Harness 没有标准预设",
   "Avatar images must be PNG, JPEG, WebP, or GIF": "头像图片必须是 PNG、JPEG、WebP 或 GIF",
   "Avatar image is too large": "头像图片太大了",
   "A Bot needs a name": "Bot 需要一个名字",
@@ -1537,6 +1562,8 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     createBot: (payload) => after(call2("create-bot", payload)),
     createRoom: (members, options = {}) => after(call2("create-room", { members, ...options })),
     updateBot: (id, patch) => after(call2("update-bot", { id, ...patch })),
+    persona: (id) => call2("persona", { id }),
+    setPersona: (id, text) => after(call2("set-persona", { id, text })),
     refreshModels: () => after(call2("models")).catch(() => {
     }),
     efforts: (ref) => call2("efforts", { ref }),
@@ -11657,6 +11684,126 @@ function SwitchRow({ label, hint, on, disabled, onChange }) {
     (0, import_react24.createElement)(Switch, { on, label, disabled, onChange })
   );
 }
+var BUILTIN_PRESETS = {
+  standard: "Standard mode",
+  ptc: "PTC mode",
+  minimal: "Minimal mode",
+  cordis: "Creator mode"
+};
+function presetLabel(option) {
+  if (option.kind === "blank") return t("Blank — standard tools");
+  if (option.kind === "blank-expanded") return t("Blank — expanded tools");
+  if (option.name) return option.name;
+  if (BUILTIN_PRESETS[option.value]) return t(BUILTIN_PRESETS[option.value]);
+  return option.value;
+}
+function presetValue(bot) {
+  if (bot.blankTools === "standard") return "blank:standard";
+  if (bot.blankTools) return "blank";
+  return bot.preset || "standard";
+}
+function presetHint(bot) {
+  const gone = bot.presetFallback;
+  if (gone?.blank) return t('The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.', { id: gone.id });
+  if (gone) return t('The preset "{id}" is not available, so this Bot uses standard.', { id: gone.id });
+  if (bot.blankTools) return t("No preset persona. This Bot keeps that preset's tools, then your persona document, then the team rules.");
+  return t("The preset's persona, then your persona document, then the team rules. Applies from the next part when the tools change.");
+}
+function PresetCard({ bot, roster, save }) {
+  const catalog = roster.presets;
+  if (!catalog?.options?.length) return null;
+  const value = presetValue(bot);
+  const expanded = catalog.options.find((option) => option.kind === "blank-expanded");
+  const sources = expanded?.sources ?? [];
+  const source = bot.blankTools && bot.blankTools !== "standard" ? bot.blankTools : sources[0]?.value;
+  const sourceOptions = source && !sources.some((option) => option.value === source) ? [...sources, { value: source, kind: "preset" }] : sources;
+  return (0, import_react24.createElement)(
+    Card,
+    { title: t("Agent preset") },
+    (0, import_react24.createElement)(
+      "div",
+      { className: "bt-set-row bt-bs-row" },
+      (0, import_react24.createElement)(
+        "span",
+        { className: "bt-set-copy" },
+        (0, import_react24.createElement)("span", { className: "bt-bs-label" }, t("Preset")),
+        (0, import_react24.createElement)("span", { className: "bt-set-hint" }, presetHint(bot))
+      ),
+      (0, import_react24.createElement)("select", {
+        className: "bt-select bt-bs-preset",
+        "aria-label": t("Agent preset"),
+        value: catalog.options.some((option) => option.value === value) ? value : "standard",
+        onChange: (event) => {
+          const next = event.target.value;
+          if (next === "blank") save({ preset: `blank:${sourceOptions[0]?.value ?? ""}` });
+          else save({ preset: next });
+        }
+      }, catalog.options.map((option) => (0, import_react24.createElement)("option", { key: option.value, value: option.value, title: option.description }, presetLabel(option))))
+    ),
+    value === "blank" && sourceOptions.length > 0 ? (0, import_react24.createElement)(
+      "div",
+      { className: "bt-set-row bt-bs-row" },
+      (0, import_react24.createElement)(
+        "span",
+        { className: "bt-set-copy" },
+        (0, import_react24.createElement)("span", { className: "bt-bs-label" }, t("Tools from")),
+        (0, import_react24.createElement)("span", { className: "bt-set-hint" }, t("Uses this installed preset's tools only. Its persona text is left off."))
+      ),
+      (0, import_react24.createElement)("select", {
+        className: "bt-select bt-bs-preset",
+        "aria-label": t("Tools from"),
+        value: source,
+        onChange: (event) => save({ preset: `blank:${event.target.value}` })
+      }, sourceOptions.map((option) => (0, import_react24.createElement)("option", { key: option.value, value: option.value }, presetLabel(option))))
+    ) : null
+  );
+}
+function PersonaCard({ bot, actions, run: run2 }) {
+  const [text, setText] = (0, import_react24.useState)(null);
+  const [saved, setSaved] = (0, import_react24.useState)("");
+  const [path, setPath] = (0, import_react24.useState)("");
+  (0, import_react24.useEffect)(() => {
+    let current = true;
+    setText(null);
+    actions.persona(bot.id).then((value) => {
+      if (!current) return;
+      setText(value.text ?? "");
+      setSaved(value.text ?? "");
+      setPath(value.path ?? "");
+    }, () => {
+      if (current) setText("");
+    });
+    return () => {
+      current = false;
+    };
+  }, [bot.id]);
+  const commit = () => {
+    if (text === null || text === saved) return;
+    const next = text;
+    void run2(actions.setPersona(bot.id, next).then(() => setSaved(next)));
+  };
+  return (0, import_react24.createElement)(
+    Card,
+    { title: t("Persona") },
+    (0, import_react24.createElement)(
+      Row,
+      {
+        label: t("Persona document"),
+        hint: path ? t("Who this Bot is, in your words. Saved as {path}. You can edit that file directly. A Bot cannot overwrite it.", { path }) : t("Who this Bot is, in your words. Only you can edit it. Instructions above stay the short job line."),
+        stack: true
+      },
+      text === null ? (0, import_react24.createElement)("div", { className: "bt-muted" }, t("Loading…")) : (0, import_react24.createElement)("textarea", {
+        className: "bt-bs-input bt-bs-area bt-persona-area",
+        value: text,
+        "aria-label": t("Persona document"),
+        spellCheck: true,
+        placeholder: t("Describe who this Bot is…"),
+        onChange: (event) => setText(event.target.value),
+        onBlur: commit
+      })
+    )
+  );
+}
 function modelHint(bot, roster) {
   const shown = modelOf(bot, roster);
   if (shown === void 0) return t("Pick the model this Bot runs on.");
@@ -11888,10 +12035,12 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
       { title: t("Instructions") },
       (0, import_react24.createElement)(
         Row,
-        { label: t("What this Bot does"), hint: t("Its job on the team. Part of the Bot's system prompt."), stack: true },
+        { label: t("What this Bot does"), hint: t("Its job on the team. Part of the Bot's system prompt. A Bot can change this."), stack: true },
         (0, import_react24.createElement)(InlineText, { label: t("Instructions"), value: bot.instructions, multiline: true, placeholder: t("What this Bot is responsible for…"), onSave: (instructions) => save({ instructions }) })
       )
     ),
+    (0, import_react24.createElement)(PresetCard, { bot, roster, save }),
+    (0, import_react24.createElement)(PersonaCard, { bot, actions, run: run2 }),
     (0, import_react24.createElement)(BotCapabilitiesCard, { bot, roster, actions, run: run2, Card, SwitchRow }),
     roster.memory === false ? null : (0, import_react24.createElement)(MemoryCard, { bot, actions }),
     (0, import_react24.createElement)(BotSchedules, { bot, roster, actions }),
@@ -11960,6 +12109,8 @@ label.bt-bs-row{cursor:text}
 .bt-bs-stack{flex-direction:column;align-items:stretch;gap:8px}
 .bt-bs-area{flex:none;width:auto;min-height:112px;height:auto;margin:0 -6px -4px;padding:8px;line-height:19px;text-align:left;resize:vertical;background:var(--bt-hover)}
 .bt-bs-area:hover{background:var(--bt-active)}
+.bt-persona-area{min-height:240px}
+.bt-bs-preset{flex:0 1 240px;max-width:58%;height:30px}
 .bt-bs-danger .bt-bs-label{color:var(--bt-danger)}
 .bt-bs-danger[data-confirm]{background:color-mix(in srgb,var(--bt-danger) 8%,transparent)}
 .bt-bs-danger[data-confirm]:hover{background:color-mix(in srgb,var(--bt-danger) 12%,transparent)}
