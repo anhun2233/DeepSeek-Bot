@@ -17,6 +17,7 @@ const TEAM_RULES = [
   '- Offer choices with ask_user (a tap-to-answer card) instead of long option lists in text. Calling it ends your turn at once, so write everything you want to say before the call, in the same reply. The answer arrives as the user\'s next message.',
   '- show_view draws a view inside your reply: a chart, key numbers, a table, a calculator whose inputs the user can change, or a choice, confirmation or short form. Use it when it shows something better than text, not for every answer. A view that asks for an answer ends your turn at once, like ask_user, so write everything you want to say before the call, in the same reply; the answer arrives as the user\'s next message. It only works in your own chat, not in a group. Never collect a key, token, or password with it; call request_secret. The view argument is limited to 8 KB.',
   '- update_bot changes your own settings: name, role label, color, model, thinking level, working folder, or instructions. Leave out bot to change yourself. Use it when the user asks you to change how you are set up, for example to work in a project folder (work_dir, a full path). Only a Main Bot can change other Bots; when another Bot needs changing, ask a Main Bot.',
+  '- The agent preset and the persona document are the user\'s. They live in your settings; the persona is also a file on disk. You cannot change either one. When the user wants one changed, tell them to edit it there. Do not pass preset or persona to update_bot or create_bot.',
   '- You may be in group chats with the user and other Bots. You speak in each group from a separate conversation of yours, apart from your own chat with the user. There your turn arrives as a "[Group chat …]" message that shows the speaking order, and your reply is posted to the group. When someone there asks you to do something, do the work in that turn: the group goes on without waiting and sees what you write as you go. Any member can hand work to another with @Name, and the one that asked answers the result. Work for a group stays in it: there message_bot reaches only members of that group, as @Name does. In a group, read_own_chat shows your own chat (the group sees that you looked; share only what the group needs). In your own chat, read_group_chat shows what was said in a group. A group may have an admin, who steers it: the admin can call members with @Name and change the group with update_group. From outside a group (your own chat or another group), post_to_group posts into a group you are in: the admin\'s post starts a new discussion there; another member\'s post calls only the members it names with @Name.',
   '- When you need a key, token, or password, call request_secret: the user types it into a secure card and you never see it. Never ask the user to paste one into the chat. Use it through its environment variable ($DSH_SECRET_<NAME> in bash, $env:DSH_SECRET_<NAME> in PowerShell) and never print it. list_secrets shows which keys exist.',
   '- web_search results say which search backend answered. If web_search fails, never guess URLs or present pages you remember as search results: use a browser tool if you have one, otherwise tell the user that search is unavailable and the reason it gave.',
@@ -32,13 +33,32 @@ const MAIN_RULES = [
   '- Route work to the right Bot: one Bot\'s task with message_bot, a group\'s task with post_to_group (or @Name when you speak in that group). Send each task one way only, then tell the user what you asked and that you will report back.',
   '- If a Bot does not heed your message and must not finish what it is doing, stop_bot ends its turn at once and tells it why; the reply comes back to you.',
   '- Every Bot runs on one model of its own (list_bots shows it). Pass model or a thinking level (effort) to create_bot or update_bot only when the user names one; list_models gives the provider/model refs and, for a model in use, the thinking levels it serves.',
-  '- Use update_bot to rename a Bot, change its role, color, model, thinking level, working folder, or instructions when the user asks.',
+  '- Use update_bot to rename a Bot, change its role, color, model, thinking level, working folder, or instructions when the user asks. The agent preset and the persona document are the user\'s to set in that Bot\'s settings; do not pass preset or persona.',
   '- You run the group chats too. create_group makes a group (you join it as its admin unless you name another); update_group changes any group\'s name, notice, members, admin, reply mode, or the folder every member works in there; post_to_group posts into any group as you, which starts a round of replies the user reads there; delete_group archives a group, only when the user asks. list_bots shows every group.',
   '- The team can have more than one Main Bot; list_bots marks them. They share these powers; message them only when your work overlaps theirs.',
 ].join('\n')
 
+// Preset persona text. Blank mode drops these so the user's persona document is the
+// only persona; tool sections from that same preset stay.
+const PRESET_PERSONA = new Set(['harness:identity', 'deployment:persona-prefix', 'deployment:persona-suffix'])
+
+export function withoutPresetPersona(assembly) {
+  if (!Array.isArray(assembly?.sections)) return assembly
+  return { ...assembly, sections: assembly.sections.filter(section => !PRESET_PERSONA.has(section.name)) }
+}
+
 export function install(rt) {
   const { ctx } = rt
+
+  // Read on each assembly. The file is the source of truth, including edits made
+  // outside settings. Unchanged bytes keep the prefix cacheable.
+  const personaFor = (id) => {
+    const bot = rt.botOf(rt.selfOf(id))
+    if (bot === undefined) return ''
+    const text = rt.personaText?.(bot.id) ?? ''
+    const body = text.trim()
+    return body === '' ? '' : `# Persona\n${body}`
+  }
 
   // A group Session renders exactly its Bot's text, so both share one cached prefix.
   const promptFor = (id) => {
@@ -64,10 +84,28 @@ export function install(rt) {
     return ''
   }
 
+  // After the preset persona (order 0) and before team rules (640). DSH orders the
+  // preset's own tool guidance later still; that stays part of the tool surface.
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'bot-persona',
+    order: 100,
+    interpolate: false,
+    text: context => personaFor(context?.agent?.id),
+  }), 'ds-bot: persona section')
+
   ctx.effect(() => ctx.systemPrompt.section({
     name: 'bot-identity',
     order: 640,
     interpolate: false,
     text: context => promptFor(context?.agent?.id),
   }), 'ds-bot: identity section')
+
+  // "No preset · open tools" mounts an installed preset and removes only its
+  // persona sections. Every other preset keeps the persona that preset registered.
+  ctx.on('system-prompt/assemble', async (assembly, context, next) => {
+    const built = await next()
+    const bot = rt.botOf(rt.selfOf(context?.agent?.id))
+    if (rt.openToolsOf?.(bot) === undefined) return built
+    return withoutPresetPersona(built ?? assembly)
+  }, { prepend: true })
 }

@@ -55,6 +55,8 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     createBot: payload => after(call('create-bot', payload)),
     createRoom: (members, options = {}) => after(call('create-room', { members, ...options })),
     updateBot: (id, patch) => after(call('update-bot', { id, ...patch })),
+    persona: id => call('persona', { id }),
+    setPersona: (id, text) => after(call('set-persona', { id, text })),
     refreshModels: () => after(call('models')).catch(() => {}),
     efforts: ref => call('efforts', { ref }),
     folders: () => call('folders'),

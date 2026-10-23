@@ -41,9 +41,13 @@ export function install(rt) {
     mainBotIds: state.mainBotIds,
     // `sessionId` is the Bot's current own-chat part; `parts` its earlier ones.
     // `waiting`: the Bot holds its greeting until the user picks its model.
-    bots: Object.values(state.bots).map(({ segments, kickoff, ...bot }) => ({
-      ...bot, sessionId: rt.chatOf(bot.id), parts: (segments ?? []).map(segment => segment.sessionId), ...(kickoff ? { waiting: true } : {}),
-    })),
+    bots: Object.values(state.bots).map(({ segments, kickoff, ...bot }) => {
+      const presetFallback = rt.presetFallback?.(bot)
+      return {
+        ...bot, sessionId: rt.chatOf(bot.id), parts: (segments ?? []).map(segment => segment.sessionId), ...(kickoff ? { waiting: true } : {}),
+        ...(presetFallback ? { presetFallback } : {}),
+      }
+    }),
     // `parts`: the members' hidden group Sessions and their earlier segments, for usage.
     rooms: Object.values(state.rooms).map(({ log, seen, lateRounds, relays, sessions, segments, ...room }) => {
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId)]
@@ -66,6 +70,7 @@ export function install(rt) {
     models: rt.cachedCatalog(),
     defaultModel: rt.cachedDefault() ?? null,
     permissions: rt.permissionCatalog?.() ?? null,
+    presets: rt.presetCatalog?.() ?? null,
     modelsKey: modelsKey(),
     prefs: state.prefs,
     // Whether a Desktop window should serve Bot browser reads (see browser.js).
@@ -90,7 +95,7 @@ export function install(rt) {
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking'])
+  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'persona'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -144,6 +149,7 @@ export function install(rt) {
           await rt.catalog()
           await rt.loadSecrets()
           if (body.since === state.revision && (body.models === undefined || body.models === modelsKey())) return ok({ revision: state.revision, unchanged: true, ...live() })
+          await rt.refreshPresets?.({ fresh: true })
           return ok({ ...view(), ...live() })
         case 'models':
           await rt.catalog({ fresh: true })
@@ -221,12 +227,18 @@ export function install(rt) {
           return ok([...rt.roomProgress.entries()].filter(([, entry]) => entry.roomId === body.roomId).map(([callId, entry]) => ({ callId, replies: entry.replies, speaking: entry.speaking ?? null })))
         case 'create-bot': {
           await rt.bootstrap()
-          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir })
+          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir, preset: body.preset })
           return ok(bot)
         }
         case 'update-bot':
           await rt.load()
           return ok(await rt.updateBot(body.id, body))
+        case 'persona':
+          await rt.load()
+          return ok(await rt.readPersona(String(body.id ?? '')))
+        case 'set-persona':
+          await rt.load()
+          return ok(await rt.writePersona(String(body.id ?? ''), body.text ?? ''))
         case 'delete-bot':
           await rt.load()
           await rt.deleteBot(body.id)

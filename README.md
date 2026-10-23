@@ -11,11 +11,40 @@ English | [中文](README.zh.md)
 
 ![version](https://img.shields.io/badge/version-v0.2_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
 
-DeepSeek Bot (DS Bot) is a bot plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). It turns DSH into bots. You create your own bots, then talk and work with them.
+This repository is a public monorepo of two plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).
+
+| Plugin | Directory | Package | What it is |
+| --- | --- | --- | --- |
+| DS Bot | [`ds-bot/`](ds-bot/) | `ds-bot` | A team of long-lived Bots. You talk with them, they talk with each other, and they work in group chats. |
+| Purge Community | [`dsh-purge/`](dsh-purge/) | `dsh-purge-community` | Community extras for the same DSH: status checks, prompt and rule management, local backup and rollback, and agent presets. Vendored as released, under MIT. |
+
+The two plugins are independent. Install both when a Bot should use a preset that Purge Community registers. DS Bot's **No preset · open tools** (无预设 · 放开工具) mounts one preset that is already installed (by default `unrestricted`, when that id is installed) and leaves that preset's persona off. You write the persona in the Bot's settings, or in `$DSH_HOME/bot/personas/<bot id>/persona.md`. The preset text stays in `dsh-purge/`. DS Bot does not contain it.
+
+The desktop app in [`app/`](app/) still ships DS Bot only. Add Purge Community to a DSH profile with the script below, or from the Plugins page.
+
+## Install both
+
+From a clone of this repository:
+
+```sh
+bash scripts/install-into-dsh.sh
+```
+
+```powershell
+powershell -File scripts/install-into-dsh.ps1
+```
+
+The script packs both plugins into `dist/plugins/` and prints the DSH **Plugins → Add plugin** steps, and the `dsh plugin add` command for when that CLI is on PATH. Manual install of either package alone, and the pinned upstream commit, are in [INSTALL.md](INSTALL.md).
+
+## DS Bot
+
+DeepSeek Bot (DS Bot) is the Bot team plugin. You create your own bots, then talk and work with them.
 
 ![Say one sentence to Chief, and it sets up the bots and the group chat](docs/images/team.png)
 
 ## Install
+
+Packing both plugins from this repository is [Install both](#install-both). The steps below install DS Bot on its own. A tarball the script prints is a valid path in step 2 of the plugin UI. Add the Purge Community tarball first when you want its presets.
 
 **Desktop app (Windows, macOS, Linux)**
 
@@ -66,6 +95,8 @@ DS Bot selects its `auto` search provider for the whole profile. If you disable 
 
 You can do all your talking and work with one bot, in one window. You don't need to worry about the context behind it. The bot's details page shows its info, and there you can pick the model you want it to use. You can switch models at any time, but I still recommend that you keep one model for a bot for a long time, and switch only when you really need to.
 
+In the Bot's settings you can also pick an agent preset that is installed in DeepSeek Harness. **No preset · open tools** mounts one of those presets (by default `unrestricted`, when it is installed) and leaves that preset's persona off. A persona document for that Bot is edited there, or as `$DSH_HOME/bot/personas/<bot id>/persona.md`.
+
 Bots also have memory. A bot remembers what you like and uses it in later work. You can manage its memory on the bot's details page, or just tell the bot.
 
 ![Bot details: model, memory, usage](docs/images/details.png)
@@ -100,13 +131,22 @@ In **Settings** → **Usage**, you can see token usage by time, by bot and by mo
 
 All data stays on your own computer, in `bot/` and `sessions/` in the DSH home folder (`~/.dsh` by default). Uninstalling the plugin does not delete this data.
 
+## Purge Community
+
+[`dsh-purge/`](dsh-purge/) is Purge Community 1.6.50, package `dsh-purge-community`, copied unchanged from [anhun2233/dsh-purge](https://github.com/anhun2233/dsh-purge) commit `4bb6e23588d5f3a4f257fe4f0b3cac3db5b62c3f`. That commit is the same tree as upstream [kingcharleslzy-ai/dsh-purge](https://github.com/kingcharleslzy-ai/dsh-purge) tag `v1.6.50`. License: MIT, Copyright (c) 2026 小杨. The package's own notice names the original project [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge). See [NOTICE](NOTICE).
+
+Its guide is [`dsh-purge/README.md`](dsh-purge/README.md) ([中文](dsh-purge/README.zh-CN.md)) and [`dsh-purge/docs/INSTALLATION.md`](dsh-purge/docs/INSTALLATION.md). That package also ships `dsh-purge/scripts/install.sh`, which downloads a GitHub release from the upstream repository. The script in this repository packs the snapshot that is already here.
+
+Presets that package registers, including `unrestricted` and `redteam`, stay in `dsh-purge/`.
+
 ## Development
 
-The plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`ds-bot/README.md`](ds-bot/README.md). For development, tests and how the team works, see [CONTRIBUTING.md](CONTRIBUTING.md). For changes between versions, see [CHANGELOG.md](CHANGELOG.md).
+The DS Bot plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`ds-bot/README.md`](ds-bot/README.md). For development, tests and how the team works, see [CONTRIBUTING.md](CONTRIBUTING.md). For changes between versions, see [CHANGELOG.md](CHANGELOG.md). Installing both plugins from this clone is [INSTALL.md](INSTALL.md).
 
 ## Acknowledgments
 
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot works in DSH sessions and uses the DSH tools and models.
+- [dsh-purge](https://github.com/kingcharleslzy-ai/dsh-purge) (MIT, Copyright (c) 2026 小杨): `dsh-purge/` is Purge Community 1.6.50, the same tree as tag `v1.6.50` and as [anhun2233/dsh-purge](https://github.com/anhun2233/dsh-purge) at that commit. Original project: [YuJunZhiXue/dsh-purge](https://github.com/YuJunZhiXue/dsh-purge). See [NOTICE](NOTICE).
 - [esbuild](https://esbuild.github.io/): bundles the plugin's interface code.
 - Thanks to these projects for the ideas they published. DS Bot learned from their designs and does not contain their code:
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo): the Markdown format of Bot memory.

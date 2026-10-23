@@ -60,15 +60,67 @@ MIT License, Copyright (c) 2026 DeepSeek
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
-No other third-party code is copied into this repository. At run time the
-plugin uses the @deepseek-ai/* packages of the DeepSeek Harness install it
-runs in; they are not bundled. esbuild is a build tool only. The desktop app
-in app/ installs the pinned @deepseek-ai/* packages, Electron and pnpm from
-npm; they keep their own licenses. The build of its window (app/ui) bundles,
-from npm, React and React DOM (MIT, Copyright (c) Meta Platforms, Inc. and
-affiliates), and react-markdown and remark-gfm with the packages they use
-(MIT, most of them Copyright (c) Titus Wormer; @ungap/structured-clone is ISC,
-Copyright (c) Andrea Giammarchi). Vite is a build tool only.
+==============================================================================
+dsh-purge community (vendored snapshot)
+==============================================================================
+
+dsh-purge/ is a byte-for-byte snapshot of Purge Community, npm package
+dsh-purge-community, version 1.6.50. Nothing in that directory was edited
+for this repository.
+
+  Source of the snapshot:
+    https://github.com/anhun2233/dsh-purge
+    commit 4bb6e23588d5f3a4f257fe4f0b3cac3db5b62c3f
+
+  That commit is the same tree as the upstream release tag v1.6.50:
+    https://github.com/kingcharleslzy-ai/dsh-purge
+    tag v1.6.50
+    commit 4bb6e23588d5f3a4f257fe4f0b3cac3db5b62c3f
+
+  License: MIT. Full text: dsh-purge/LICENSE.
+  Copyright (c) 2026 小杨
+
+  dsh-purge/NOTICE.md attributes this community fork to an independently
+  maintained fork of dsh-purge. It names the original author as 小杨 /
+  YuJunZhiXue:
+    https://github.com/YuJunZhiXue/dsh-purge
+  Notices for other material inside the snapshot stay next to it:
+    dsh-purge/docs/redteam-upstream-LICENSE
+    dsh-purge/docs/redteam-upstream-DISCLOSURE
+    dsh-purge/CONTRIBUTORS.md
+
+  Preset text shipped by that package is not copied into ds-bot/. DS Bot only
+  mounts a preset id that the running DeepSeek Harness has already registered.
+
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+At run time the DS Bot plugin uses the @deepseek-ai/* packages of the
+DeepSeek Harness install it runs in; they are not bundled. esbuild is a build
+tool only. The desktop app in app/ installs the pinned @deepseek-ai/* packages,
+Electron and pnpm from npm; they keep their own licenses. The build of its
+window (app/ui) bundles, from npm, React and React DOM (MIT, Copyright (c)
+Meta Platforms, Inc. and affiliates), and react-markdown and remark-gfm with
+the packages they use (MIT, most of them Copyright (c) Titus Wormer;
+@ungap/structured-clone is ISC, Copyright (c) Andrea Giammarchi). Vite is a
+build tool only.
 
 ==============================================================================
 Projects that gave us ideas (no code copied)

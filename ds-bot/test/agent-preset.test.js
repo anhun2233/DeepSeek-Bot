@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -22,10 +22,16 @@ const TEAM = {
   questions: {},
 }
 
-function start({ presets } = {}) {
+function start({ presets, readDocument } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-agent-preset-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
-  const services = presets === undefined ? {} : { agentPresets: { list: async () => presets } }
+  const services = presets === undefined ? {} : {
+    agentPresets: {
+      list: async () => presets,
+      select: async (_agent, id) => id,
+      ...(readDocument ? { readDocument } : {}),
+    },
+  }
   const ctx = fakeContext({ services })
   const created = []
   Object.assign(ctx, {
@@ -50,7 +56,7 @@ function start({ presets } = {}) {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })
   }
-  return { rt, created, relay, stop }
+  return { rt, ctx, created, relay, home, stop }
 }
 
 async function drain(stream) {
@@ -85,6 +91,84 @@ test('without a usable standard preset a Bot Session keeps DSH\'s default', asyn
     await rt.createSession('Chief')
     assert.deepEqual(created, [{ workspaceId: 'w1' }])
   }
+})
+
+test('a Bot Session uses the preset saved on that Bot', async (t) => {
+  const { rt, created, stop } = start({ presets: [{ id: 'ptc' }, { id: 'standard' }, { id: 'unrestricted', name: 'Open' }] })
+  t.after(stop)
+  await rt.load()
+  await rt.createSession('Chief', { presetBot: { preset: 'unrestricted' } })
+  await rt.createSession('Member', { presetBot: { blankTools: 'unrestricted' } })
+  assert.deepEqual(created.map(request => request.agentPreset), ['unrestricted', 'unrestricted'])
+})
+
+test('a missing preset falls back to standard', async (t) => {
+  const { rt, created, stop } = start({ presets: [{ id: 'standard' }] })
+  t.after(stop)
+  await rt.load()
+  await rt.createSession('Chief', { presetBot: { preset: 'unrestricted' } })
+  assert.deepEqual(created, [{ workspaceId: 'w1', agentPreset: 'standard' }])
+  assert.deepEqual(rt.presetFallback({ preset: 'unrestricted' }), { id: 'unrestricted', blank: false })
+  assert.deepEqual(rt.presetFallback({ blankTools: 'unrestricted' }), { id: 'unrestricted', blank: true })
+})
+
+test('the preset list is every installed preset, plus blank tool modes', async (t) => {
+  const readDocument = async (id) => ({
+    content: id === 'minimal'
+      ? "name: '@deepseek-ai/dsh-persona'\n  prefix: hello\n  complete: true\n"
+      : "name: '@deepseek-ai/dsh-tool-fs'\n",
+  })
+  const { rt, stop } = start({
+    presets: [
+      { id: 'standard' },
+      { id: 'ptc' },
+      { id: 'minimal' },
+      { id: 'cordis', name: 'Creator mode' },
+      { id: 'unrestricted', name: 'Open' },
+    ],
+    readDocument,
+  })
+  t.after(stop)
+  await rt.refreshPresets()
+  const catalog = rt.presetCatalog()
+  assert.deepEqual(catalog.options.map(option => option.value), ['standard', 'ptc', 'minimal', 'cordis', 'unrestricted', 'blank'])
+  const expanded = catalog.options.find(option => option.kind === 'open-tools')
+  assert.equal(expanded.defaultSource, 'unrestricted')
+  assert.deepEqual(expanded.sources.map(option => option.value), ['ptc', 'cordis', 'unrestricted'])
+  assert.deepEqual(await rt.cleanPresetChoice('blank:standard'), { preset: 'standard' })
+  await assert.rejects(rt.cleanPresetChoice('blank:minimal'), /replaces the whole system prompt/)
+  assert.deepEqual(await rt.cleanPresetChoice('blank:unrestricted'), { blankTools: 'unrestricted' })
+  assert.equal(rt.openToolsOf({ blankTools: 'unrestricted' }), 'unrestricted')
+  assert.equal(rt.openToolsOf({ blankTools: 'standard' }), undefined)
+  assert.equal(rt.openToolsOf({ blankTools: 'gone' }), undefined)
+})
+
+test('open-tools mode is hidden when no other preset is installed', async (t) => {
+  const { rt, stop } = start({ presets: [{ id: 'standard' }] })
+  t.after(stop)
+  await rt.refreshPresets()
+  assert.deepEqual(rt.presetCatalog().options.map(option => option.value), ['standard'])
+})
+
+test('a Bot cannot set the preset or the persona; the user can, and the file is created', async (t) => {
+  const { rt, ctx, home, stop } = start({ presets: [{ id: 'standard' }, { id: 'unrestricted', name: 'Open' }] })
+  t.after(stop)
+  await rt.load()
+  const tool = (args, sessionId) => ctx.registeredTools.get('update_bot').execute(args, { agent: { id: sessionId, session: { id: sessionId } } })
+  assert.match(await tool({ preset: 'unrestricted', name: 'Nope' }, 'chief'), /Only the user can change/)
+  assert.equal(rt.botOf('chief').name, 'Chief')
+  assert.equal(rt.botOf('chief').preset, undefined)
+  await rt.updateBot('chief', { preset: 'blank:unrestricted' })
+  assert.equal(rt.botOf('chief').blankTools, 'unrestricted')
+  assert.equal(rt.botOf('chief').preset, undefined)
+  const saved = await rt.writePersona('chief', 'Calm and brief.\n')
+  assert.equal(saved.path, 'personas/chief/persona.md')
+  const file = join(home, 'personas', 'chief', 'persona.md')
+  assert.equal(existsSync(file), true)
+  assert.match(ctx.sections.get('bot-persona').text({ agent: { id: 'chief' } }), /^# Persona\nCalm and brief\.$/)
+  assert.equal(ctx.sections.get('bot-persona').order, 100)
+  assert.equal(ctx.sections.get('bot-identity').order, 640)
+  assert.doesNotMatch(ctx.sections.get('bot-identity').text({ agent: { id: 'chief' } }), /Calm and brief/)
 })
 
 test('a group round calls group_relay directly when the Session declares it', async (t) => {

@@ -126,7 +126,8 @@ const ROOM_READ_MAX = 30
 
 // DSH cannot open the Session at all: it is gone, or its stored log is corrupt. DSH
 // reports a corrupt log only in the message of a generic failure.
-const lostSession = error => error?.code === 'session/not-found' || /\bis corrupt\b|\bcorrupt session log\b/i.test(String(error?.message ?? ''))
+const lostSession = error => error?.code === 'session/not-found' || error?.code === 'agent-preset/not-found' || error?.code === 'agent-preset/invalid'
+  || /\bis corrupt\b|\bcorrupt session log\b|\bunknown agent preset\b/i.test(String(error?.message ?? ''))
 const fileLine = file => `[File "${file.name}" (${file.bytes} bytes) attached]`
 
 export function install(rt) {
@@ -201,7 +202,7 @@ export function install(rt) {
       await rt.ensureCapabilities(known)
       return { id: known, brief: undefined }
     }
-    const id = await rt.createSession(`${member.name} · ${room.name}`, { dir: rt.workDirOf({ botId: member.id, roomId: room.id }) })
+    const id = await rt.createSession(`${member.name} · ${room.name}`, { dir: rt.workDirOf({ botId: member.id, roomId: room.id }), presetBot: member })
     // While the Session was made the member may have left or been deleted, the group been
     // deleted, or another turn made the member's Session first: the new one is not kept.
     // Undefined means the member is gone from the group.
