@@ -66,7 +66,7 @@ DS Bot 会把 `auto` 搜索 provider 选为整个 profile 的后端。禁用 `we
 
 你可以在一个窗口中和一个 bot 完成所有对话和工作，你无需担心背后的上下文问题。你可以在 bot 详情页查看 bot 信息，也可以为 bot 选择你想使用的模型。你可以随时切换模型，但我仍然建议你为一个 bot 长期保持一个模型，仅在真正必要的时刻切换。
 
-在 Bot 的设置里还可以选择当前 DeepSeek Harness 已安装的 Agent 预设，或一种空白模式：沿用某个预设的工具，但不使用它的人设。每个人设文档也可以在设置里改，或直接改 `$DSH_HOME/bot/personas/<bot id>/persona.md`。
+在 Bot 的设置里还可以选择当前 DeepSeek Harness 已安装的 Agent 预设。**无预设 · 放开工具**会挂上其中一个已安装预设（装了 `unrestricted` 时默认用它），沿用它的工具，但不使用它的人设。每个人设文档也可以在设置里改，或直接改 `$DSH_HOME/bot/personas/<bot id>/persona.md`。
 
 另外，bot 拥有记忆，它会记住你的喜好并在下次的工作中应用。你可以在 bot 的详情页管理记忆，也可以直接和 bot 对话来进行管理。
 

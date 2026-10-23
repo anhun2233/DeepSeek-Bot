@@ -131,18 +131,23 @@ test('the preset list is every installed preset, plus blank tool modes', async (
   t.after(stop)
   await rt.refreshPresets()
   const catalog = rt.presetCatalog()
-  assert.deepEqual(catalog.options.map(option => option.value), ['standard', 'ptc', 'minimal', 'cordis', 'unrestricted', 'blank:standard', 'blank'])
-  const expanded = catalog.options.find(option => option.kind === 'blank-expanded')
+  assert.deepEqual(catalog.options.map(option => option.value), ['standard', 'ptc', 'minimal', 'cordis', 'unrestricted', 'blank'])
+  const expanded = catalog.options.find(option => option.kind === 'open-tools')
+  assert.equal(expanded.defaultSource, 'unrestricted')
   assert.deepEqual(expanded.sources.map(option => option.value), ['ptc', 'cordis', 'unrestricted'])
+  assert.deepEqual(await rt.cleanPresetChoice('blank:standard'), { preset: 'standard' })
   await assert.rejects(rt.cleanPresetChoice('blank:minimal'), /replaces the whole system prompt/)
   assert.deepEqual(await rt.cleanPresetChoice('blank:unrestricted'), { blankTools: 'unrestricted' })
+  assert.equal(rt.openToolsOf({ blankTools: 'unrestricted' }), 'unrestricted')
+  assert.equal(rt.openToolsOf({ blankTools: 'standard' }), undefined)
+  assert.equal(rt.openToolsOf({ blankTools: 'gone' }), undefined)
 })
 
-test('blank tool mode is hidden when no other preset is installed', async (t) => {
+test('open-tools mode is hidden when no other preset is installed', async (t) => {
   const { rt, stop } = start({ presets: [{ id: 'standard' }] })
   t.after(stop)
   await rt.refreshPresets()
-  assert.deepEqual(rt.presetCatalog().options.map(option => option.value), ['standard', 'blank:standard'])
+  assert.deepEqual(rt.presetCatalog().options.map(option => option.value), ['standard'])
 })
 
 test('a Bot cannot set the preset or the persona; the user can, and the file is created', async (t) => {

@@ -100,13 +100,12 @@ export function install(rt) {
     text: context => promptFor(context?.agent?.id),
   }), 'ds-bot: identity section')
 
-  // Blank mode keeps the mounted preset's tools and removes its persona text.
-  // A preset that marks its persona complete restores that text after this
-  // waterfall, which is why those presets are not offered as blank tool sources.
+  // "No preset · open tools" mounts an installed preset and removes only its
+  // persona sections. Every other preset keeps the persona that preset registered.
   ctx.on('system-prompt/assemble', async (assembly, context, next) => {
     const built = await next()
     const bot = rt.botOf(rt.selfOf(context?.agent?.id))
-    if (!bot?.blankTools) return built
+    if (rt.openToolsOf?.(bot) === undefined) return built
     return withoutPresetPersona(built ?? assembly)
   }, { prepend: true })
 }

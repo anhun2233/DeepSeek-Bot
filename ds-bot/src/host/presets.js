@@ -83,16 +83,31 @@ export function install(rt) {
       kind: 'preset',
     })
     const options = ready.map(option)
-    if (usable(DEFAULT_PRESET)) options.push({ value: 'blank:standard', kind: 'blank', tools: DEFAULT_PRESET })
+    // One extra mode: mount an installed preset and drop its persona text.
+    // Standard is not a source. A persona that replaces the whole prompt cannot
+    // be separated from its tools, so it is not a source either.
     const sources = ready.filter(row => row.id !== DEFAULT_PRESET && !complete.has(row.id)).map(option)
-    if (sources.length > 0) options.push({ value: 'blank', kind: 'blank-expanded', sources })
+    if (sources.length > 0) {
+      const defaultSource = sources.some(source => source.value === 'unrestricted') ? 'unrestricted' : sources[0].value
+      options.push({ value: 'blank', kind: 'open-tools', sources, defaultSource })
+    }
     return { options, defaultPreset: DEFAULT_PRESET }
+  }
+
+  // The installed preset whose tools this Bot uses with its persona text removed.
+  // `standard` is never this mode. A source that is no longer installed is not
+  // one either: the Bot falls back to standard, persona included.
+  function openToolsOf(bot) {
+    const id = bot?.blankTools
+    if (typeof id !== 'string' || id === '' || id === DEFAULT_PRESET) return undefined
+    if (rows !== null && !usable(id)) return undefined
+    return id
   }
 
   // The preset a Session is mounted with. Blank mode mounts the preset whose tools
   // it keeps. A saved id that is gone falls back to standard when DSH still has it.
   function mountId(bot) {
-    const named = bot?.blankTools || (typeof bot?.preset === 'string' && bot.preset !== '' ? bot.preset : undefined)
+    const named = openToolsOf(bot) || (typeof bot?.preset === 'string' && bot.preset !== '' ? bot.preset : undefined)
     if (named && named !== DEFAULT_PRESET) {
       if (usable(named)) return named
       return usable(DEFAULT_PRESET) ? DEFAULT_PRESET : undefined
@@ -100,34 +115,32 @@ export function install(rt) {
     return usable(DEFAULT_PRESET) ? DEFAULT_PRESET : undefined
   }
 
-  const explicit = bot => bot?.blankTools !== undefined || (typeof bot?.preset === 'string' && bot.preset !== '')
+  const explicit = bot => (typeof bot?.preset === 'string' && bot.preset !== '')
+    || (typeof bot?.blankTools === 'string' && bot.blankTools !== '' && bot.blankTools !== DEFAULT_PRESET)
 
   function presetFallback(bot) {
-    const named = bot?.blankTools && bot.blankTools !== DEFAULT_PRESET ? bot.blankTools
-      : typeof bot?.preset === 'string' && bot.preset !== '' && bot.preset !== DEFAULT_PRESET ? bot.preset : undefined
+    const open = typeof bot?.blankTools === 'string' && bot.blankTools !== '' && bot.blankTools !== DEFAULT_PRESET ? bot.blankTools : undefined
+    const named = open ?? (typeof bot?.preset === 'string' && bot.preset !== '' && bot.preset !== DEFAULT_PRESET ? bot.preset : undefined)
     if (named === undefined || service() === undefined || rows === null) return undefined
     const row = (rows ?? []).find(item => item.id === named)
     if (row && row.broken === undefined) return undefined
-    return { id: named, blank: bot.blankTools !== undefined }
+    return { id: named, blank: open !== undefined }
   }
 
   function availableIds() {
     return (rows ?? []).filter(row => row.broken === undefined).map(row => row.id)
   }
 
-  // One settings value: a preset id, `blank:standard`, or `blank:<id>` for another
-  // installed preset's tools with its persona left off.
+  // One settings value: a preset id, or `blank:<id>` to mount that installed preset
+  // and drop its persona text. Standard is not a source for that mode.
   async function cleanPresetChoice(raw) {
     const choice = String(raw ?? '').trim()
     await refreshPresets({ fresh: true })
     if (service() === undefined) throw new Error('Agent presets are not available in this DeepSeek Harness')
-    if (choice === '' || choice === DEFAULT_PRESET) return { preset: DEFAULT_PRESET }
-    if (choice === 'blank:standard') {
-      if (!usable(DEFAULT_PRESET)) throw new Error('The standard preset is not available in this DeepSeek Harness')
-      return { blankTools: DEFAULT_PRESET }
-    }
+    if (choice === '' || choice === DEFAULT_PRESET || choice === 'blank:standard') return { preset: DEFAULT_PRESET }
     if (choice.startsWith('blank:')) {
       const source = choice.slice('blank:'.length)
+      if (source === DEFAULT_PRESET) return { preset: DEFAULT_PRESET }
       if (!usable(source)) throw new Error(`Unknown agent preset "${source}". Available: ${availableIds().join(', ') || 'none'}`)
       if (complete.has(source)) throw new Error(`The preset "${source}" replaces the whole system prompt, so its tools cannot be used without its persona`)
       return { blankTools: source }
@@ -213,6 +226,6 @@ export function install(rt) {
 
   Object.assign(rt, {
     refreshPresets, presetCatalog, presetFallback, cleanPresetChoice, presetCreateArg, applyPresetChoice: applyChoice,
-    mountPresetId: mountId, presetExplicit: explicit, followPreset, boundPreset: agent => boundPreset(ctx, agent),
+    mountPresetId: mountId, presetExplicit: explicit,     followPreset, boundPreset: agent => boundPreset(ctx, agent), openToolsOf,
   })
 }

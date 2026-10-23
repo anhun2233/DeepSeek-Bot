@@ -91,24 +91,21 @@ const BUILTIN_PRESETS = {
 }
 
 function presetLabel(option) {
-  if (option.kind === 'blank') return t('Blank — standard tools')
-  if (option.kind === 'blank-expanded') return t('Blank — expanded tools')
+  if (option.kind === 'open-tools') return t('No preset · open tools')
   if (option.name) return option.name
   if (BUILTIN_PRESETS[option.value]) return t(BUILTIN_PRESETS[option.value])
   return option.value
 }
 
 function presetValue(bot) {
-  if (bot.blankTools === 'standard') return 'blank:standard'
-  if (bot.blankTools) return 'blank'
+  if (bot.blankTools && bot.blankTools !== 'standard') return 'blank'
   return bot.preset || 'standard'
 }
 
 function presetHint(bot) {
   const gone = bot.presetFallback
-  if (gone?.blank) return t('The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.', { id: gone.id })
   if (gone) return t('The preset "{id}" is not available, so this Bot uses standard.', { id: gone.id })
-  if (bot.blankTools) return t('No preset persona. This Bot keeps that preset\'s tools, then your persona document, then the team rules.')
+  if (bot.blankTools && bot.blankTools !== 'standard') return t('No preset persona. Tools come from the installed preset chosen below, then your persona document, then the team rules.')
   return t('The preset\'s persona, then your persona document, then the team rules. Applies from the next part when the tools change.')
 }
 
@@ -116,9 +113,10 @@ function PresetCard({ bot, roster, save }) {
   const catalog = roster.presets
   if (!catalog?.options?.length) return null
   const value = presetValue(bot)
-  const expanded = catalog.options.find(option => option.kind === 'blank-expanded')
+  const expanded = catalog.options.find(option => option.kind === 'open-tools')
   const sources = expanded?.sources ?? []
-  const source = bot.blankTools && bot.blankTools !== 'standard' ? bot.blankTools : sources[0]?.value
+  const picked = bot.blankTools && bot.blankTools !== 'standard' ? bot.blankTools : undefined
+  const source = picked ?? expanded?.defaultSource ?? sources[0]?.value
   const sourceOptions = source && !sources.some(option => option.value === source) ? [...sources, { value: source, kind: 'preset' }] : sources
   return h(Card, { title: t('Agent preset') },
     h('div', { className: 'bt-set-row bt-bs-row' },
@@ -129,14 +127,14 @@ function PresetCard({ bot, roster, save }) {
         className: 'bt-select bt-bs-preset', 'aria-label': t('Agent preset'), value: catalog.options.some(option => option.value === value) ? value : 'standard',
         onChange: (event) => {
           const next = event.target.value
-          if (next === 'blank') save({ preset: `blank:${sourceOptions[0]?.value ?? ''}` })
+          if (next === 'blank') save({ preset: `blank:${expanded?.defaultSource ?? sourceOptions[0]?.value ?? ''}` })
           else save({ preset: next })
         },
       }, catalog.options.map(option => h('option', { key: option.value, value: option.value, title: option.description }, presetLabel(option))))),
     value === 'blank' && sourceOptions.length > 0 ? h('div', { className: 'bt-set-row bt-bs-row' },
       h('span', { className: 'bt-set-copy' },
         h('span', { className: 'bt-bs-label' }, t('Tools from')),
-        h('span', { className: 'bt-set-hint' }, t('Uses this installed preset\'s tools only. Its persona text is left off.'))),
+        h('span', { className: 'bt-set-hint' }, t('Mounts this installed preset and keeps its tools. Its persona text is left off.'))),
       h('select', {
         className: 'bt-select bt-bs-preset', 'aria-label': t('Tools from'), value: source,
         onChange: event => save({ preset: `blank:${event.target.value}` }),

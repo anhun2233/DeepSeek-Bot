@@ -339,18 +339,16 @@ var ZH = {
   "Permissions": "权限",
   "Agent preset": "Agent 预设",
   Preset: "预设",
-  "Blank — standard tools": "空白 — 标准工具",
-  "Blank — expanded tools": "空白 — 扩展工具",
+  "No preset · open tools": "无预设 · 放开工具",
   "Tools from": "工具来自",
   "Standard mode": "标准模式",
   "PTC mode": "PTC 模式",
   "Minimal mode": "极简模式",
   "Creator mode": "创造模式",
-  "No preset persona. This Bot keeps that preset's tools, then your persona document, then the team rules.": "没有预设人设。这个 Bot 沿用该预设的工具，然后是你的人设文档，再是团队规则。",
+  "No preset persona. Tools come from the installed preset chosen below, then your persona document, then the team rules.": "没有预设人设。工具来自下面选的已安装预设，然后是你的人设文档，再是团队规则。",
   "The preset's persona, then your persona document, then the team rules. Applies from the next part when the tools change.": "先是预设的人设，然后是你的人设文档，再是团队规则。工具变了的话，从下一段对话开始生效。",
   'The preset "{id}" is not available, so this Bot uses standard.': "预设「{id}」不可用，所以这个 Bot 改用标准预设。",
-  'The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.': "预设「{id}」不可用，所以这个 Bot 改用标准预设的工具，并且不带预设人设。",
-  "Uses this installed preset's tools only. Its persona text is left off.": "只用这个已安装预设的工具，不带它的人设文字。",
+  "Mounts this installed preset and keeps its tools. Its persona text is left off.": "挂上这个已安装的预设，沿用它的工具，不使用它的人设文字。",
   Persona: "人设",
   "Persona document": "人设文档",
   "Who this Bot is, in your words. Saved as {path}. You can edit that file directly. A Bot cannot overwrite it.": "用你自己的话描述这个 Bot 是谁。保存在 {path}。你也可以直接改那个文件。Bot 不能覆盖它。",
@@ -11691,31 +11689,29 @@ var BUILTIN_PRESETS = {
   cordis: "Creator mode"
 };
 function presetLabel(option) {
-  if (option.kind === "blank") return t("Blank — standard tools");
-  if (option.kind === "blank-expanded") return t("Blank — expanded tools");
+  if (option.kind === "open-tools") return t("No preset · open tools");
   if (option.name) return option.name;
   if (BUILTIN_PRESETS[option.value]) return t(BUILTIN_PRESETS[option.value]);
   return option.value;
 }
 function presetValue(bot) {
-  if (bot.blankTools === "standard") return "blank:standard";
-  if (bot.blankTools) return "blank";
+  if (bot.blankTools && bot.blankTools !== "standard") return "blank";
   return bot.preset || "standard";
 }
 function presetHint(bot) {
   const gone = bot.presetFallback;
-  if (gone?.blank) return t('The preset "{id}" is not available, so this Bot uses standard tools without a preset persona.', { id: gone.id });
   if (gone) return t('The preset "{id}" is not available, so this Bot uses standard.', { id: gone.id });
-  if (bot.blankTools) return t("No preset persona. This Bot keeps that preset's tools, then your persona document, then the team rules.");
+  if (bot.blankTools && bot.blankTools !== "standard") return t("No preset persona. Tools come from the installed preset chosen below, then your persona document, then the team rules.");
   return t("The preset's persona, then your persona document, then the team rules. Applies from the next part when the tools change.");
 }
 function PresetCard({ bot, roster, save }) {
   const catalog = roster.presets;
   if (!catalog?.options?.length) return null;
   const value = presetValue(bot);
-  const expanded = catalog.options.find((option) => option.kind === "blank-expanded");
+  const expanded = catalog.options.find((option) => option.kind === "open-tools");
   const sources = expanded?.sources ?? [];
-  const source = bot.blankTools && bot.blankTools !== "standard" ? bot.blankTools : sources[0]?.value;
+  const picked = bot.blankTools && bot.blankTools !== "standard" ? bot.blankTools : void 0;
+  const source = picked ?? expanded?.defaultSource ?? sources[0]?.value;
   const sourceOptions = source && !sources.some((option) => option.value === source) ? [...sources, { value: source, kind: "preset" }] : sources;
   return (0, import_react24.createElement)(
     Card,
@@ -11735,7 +11731,7 @@ function PresetCard({ bot, roster, save }) {
         value: catalog.options.some((option) => option.value === value) ? value : "standard",
         onChange: (event) => {
           const next = event.target.value;
-          if (next === "blank") save({ preset: `blank:${sourceOptions[0]?.value ?? ""}` });
+          if (next === "blank") save({ preset: `blank:${expanded?.defaultSource ?? sourceOptions[0]?.value ?? ""}` });
           else save({ preset: next });
         }
       }, catalog.options.map((option) => (0, import_react24.createElement)("option", { key: option.value, value: option.value, title: option.description }, presetLabel(option))))
@@ -11747,7 +11743,7 @@ function PresetCard({ bot, roster, save }) {
         "span",
         { className: "bt-set-copy" },
         (0, import_react24.createElement)("span", { className: "bt-bs-label" }, t("Tools from")),
-        (0, import_react24.createElement)("span", { className: "bt-set-hint" }, t("Uses this installed preset's tools only. Its persona text is left off."))
+        (0, import_react24.createElement)("span", { className: "bt-set-hint" }, t("Mounts this installed preset and keeps its tools. Its persona text is left off."))
       ),
       (0, import_react24.createElement)("select", {
         className: "bt-select bt-bs-preset",
